@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WireGuard AllowedIPs Calculator</title>
+<style nonce="{{.Nonce}}">
+  :root {
+    --bg: #fafaf7; --fg: #1d1f21; --muted: #62666b; --card: #ffffff;
+    --line: #d9d9d2; --accent: #1f5fbf; --accent-fg: #ffffff; --err: #b3261e;
+    --err-bg: #fdecea; --code-bg: #f0f0ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a; --fg: #e6e6e3; --muted: #9a9ea3; --card: #1f2023;
+      --line: #36383c; --accent: #6ea4ff; --accent-fg: #101214; --err: #ff8a80;
+      --err-bg: #3a1f1d; --code-bg: #26282b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 52rem; margin: 0 auto; padding: 2rem 1rem 3rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .5rem; }
+  p.lead { color: var(--muted); margin: 0 0 1.5rem; }
+  form { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  label { display: block; font-weight: 600; margin-bottom: .35rem; }
+  textarea, pre {
+    font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  textarea {
+    width: 100%; min-height: 9rem; resize: vertical; padding: .6rem .7rem;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px;
+  }
+  textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .actions { margin-top: 1rem; display: flex; gap: .75rem; align-items: center; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 6px; padding: .55rem 1.2rem;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg);
+  }
+  button.secondary { background: transparent; color: var(--accent); }
+  .error { margin-top: 1rem; padding: .7rem .9rem; border-radius: 6px; background: var(--err-bg); color: var(--err); }
+  .result { margin-top: 1.5rem; }
+  .result h2 { font-size: 1.1rem; margin: 0 0 .5rem; }
+  pre {
+    margin: 0; padding: .9rem 1rem; background: var(--code-bg); border: 1px solid var(--line);
+    border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all;
+  }
+  .meta { color: var(--muted); font-size: .9rem; margin-top: .5rem; }
+  .help { color: var(--muted); font-size: .9rem; margin-top: 2rem; }
+  .help code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>WireGuard AllowedIPs Calculator</h1>
+  <p class="lead">Subtract “disallowed” IP blocks from “allowed” IP blocks to get the <code>AllowedIPs</code> setting for a WireGuard peer. Everything is calculated locally by this server.</p>
+
+  <form method="post" action="/">
+    <div class="grid">
+      <div>
+        <label for="allowed">Allowed IPs</label>
+        <textarea id="allowed" name="allowed" spellcheck="false" autocomplete="off" placeholder="0.0.0.0/0, ::/0">{{.Allowed}}</textarea>
+      </div>
+      <div>
+        <label for="disallowed">Disallowed IPs</label>
+        <textarea id="disallowed" name="disallowed" spellcheck="false" autocomplete="off" placeholder="10.0.0.0/8, 192.168.0.0/16, fc00::/7">{{.Disallowed}}</textarea>
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit">Calculate</button>
+    </div>
+  </form>
+
+  {{if .Error}}<div class="error" role="alert">{{.Error}}</div>{{end}}
+
+  {{if .Line}}
+  <section class="result">
+    <h2>Result</h2>
+    <pre id="out">{{.Line}}</pre>
+    <div class="actions">
+      <button type="button" class="secondary" id="copy">Copy</button>
+      <span class="meta">{{.V4}} IPv4 block(s), {{.V6}} IPv6 block(s)</span>
+    </div>
+  </section>
+  {{else if and .Submitted (not .Error)}}
+  <section class="result"><p>The result is empty: nothing is left after subtracting the disallowed blocks.</p></section>
+  {{end}}
+
+  <p class="help">
+    Separate entries with commas, spaces or new lines. Each entry is a CIDR block (<code>10.0.0.0/8</code>,
+    <code>fc00::/7</code>) or a single address (<code>192.168.1.5</code>). IPv4 and IPv6 are handled independently.
+    A pasted <code>AllowedIPs = …</code> line is accepted too.
+  </p>
+</main>
+{{if .Line}}
+<script nonce="{{.Nonce}}">
+  document.getElementById("copy").addEventListener("click", function (e) {
+    var btn = e.currentTarget, text = document.getElementById("out").textContent;
+    var done = function () { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = "Copy"; }, 1500); };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () {});
+    } else {
+      var range = document.createRange(); range.selectNodeContents(document.getElementById("out"));
+      var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      try { if (document.execCommand("copy")) done(); } catch (err) {}
+    }
+  });
+</script>
+{{end}}
+</body>
+</html>
